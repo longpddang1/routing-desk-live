@@ -23,3 +23,9 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-haiku-4-5
+      - key: SUPPORT_EMAIL
+        sync: false
+      - key: ZENDESK_WIDGET_KEY
+        sync: false
+      - key: ZENDESK_WEBHOOK_SECRET
+        sync: false

@@ -114,7 +114,9 @@ async function createTicket(fields) {
     '',
     `Channel: ${fields.channel}`,
     fields.email ? `Email: ${fields.email}` : null,
-    fields.phone ? `Phone: ${fields.phone}` : null
+    fields.phone ? `Phone: ${fields.phone}` : null,
+    fields.zendeskTicketId ? `Zendesk ticket: #${fields.zendeskTicketId}` : null,
+    fields.zendeskTicketUrl ? `Zendesk link: ${fields.zendeskTicketUrl}` : null
   ].filter(Boolean).join('\n');
 
   if (!isConfigured()) {

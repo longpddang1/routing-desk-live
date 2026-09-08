@@ -45,7 +45,8 @@ function ticketMessage(ticket) {
     [ticket.email, ticket.phone].filter(Boolean).join('  ·  '),
     ticket.category ? `Category: ${ticket.category}` : null,
     ticket.note ? `> ${ticket.note}` : null,
-    ticket.hubspotUrl ? `<${ticket.hubspotUrl}|Open in HubSpot>` : (ticket.hubspotId ? `HubSpot ticket: ${ticket.hubspotId} (dry run - no real ticket created)` : null)
+    ticket.hubspotUrl ? `<${ticket.hubspotUrl}|Open in HubSpot>` : (ticket.hubspotId ? `HubSpot ticket: ${ticket.hubspotId} (dry run - no real ticket created)` : null),
+    ticket.zendeskTicketUrl ? `<${ticket.zendeskTicketUrl}|View original in Zendesk>` : null
   ].filter(Boolean);
   return {
     text: `[${ticket.priority}] New ${tier.toLowerCase()}-queue ticket from ${ticket.name || ticket.email || ticket.phone || 'a customer'}`,
