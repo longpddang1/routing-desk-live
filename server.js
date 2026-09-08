@@ -7,6 +7,7 @@ const fs = require('fs');
 const { triage, DEFAULT_CATEGORIES } = require('./src/triage');
 const hubspot = require('./src/hubspot');
 const slack = require('./src/slack');
+const zendesk = require('./src/zendesk');
 
 const app = express();
 app.use(express.json({ limit: '100kb' }));
@@ -42,9 +43,59 @@ function renderHomepage() {
     ? 'Click the chat bubble in the corner of this page — a real person (backed by our own routing automation) will be right with you.'
     : "Live chat isn't connected yet — reach out by email in the meantime.";
 
+  /* Pre-chat capture.
+     Zendesk Messaging keeps chat content in its own conversation event
+     stream, NOT in the ticket's comment field - so trigger placeholders
+     like {{ticket.description}} and {{ticket.comments_formatted}} can
+     never see what the customer typed (they only ever resolve to the
+     internal "Conversation with <name>" stub). The supported way to get
+     real text onto the ticket is the Web Widget's conversationFields
+     API, which writes a value into a custom ticket field before the
+     conversation starts. We capture the customer's issue on the page,
+     push it into that field, then open the widget - so the Zendesk
+     trigger can read it back with {{ticket.ticket_field_<id>}}.
+     The custom field must have "Customers can edit" enabled. */
+  const issueFieldId = (process.env.ZENDESK_ISSUE_FIELD_ID || '').trim();
+  const prechatScript = (widgetKey && issueFieldId)
+    ? `<script>
+(function () {
+  var FIELD_ID = ${JSON.stringify(issueFieldId)};
+  var form = document.getElementById('prechat-form');
+  var input = document.getElementById('prechat-input');
+  var done = document.getElementById('prechat-done');
+  if (!form || !input) return;
+
+  // The widget snippet loads asynchronously; zE queues commands once it
+  // exists, so poll briefly rather than assuming it's ready on submit.
+  function withWidget(cb, tries) {
+    tries = tries == null ? 40 : tries;
+    if (typeof window.zE === 'function') { cb(); return; }
+    if (tries <= 0) return;
+    setTimeout(function () { withWidget(cb, tries - 1); }, 150);
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = (input.value || '').trim();
+    if (!text) { input.focus(); return; }
+    withWidget(function () {
+      try {
+        window.zE('messenger:set', 'conversationFields', [{ id: FIELD_ID, value: text }]);
+        window.zE('messenger', 'open');
+        if (done) done.style.display = 'block';
+      } catch (err) {
+        console.error('[prechat] could not hand off to the widget:', err);
+      }
+    });
+  });
+})();
+</script>`
+    : '<!-- Pre-chat capture inactive: needs ZENDESK_WIDGET_KEY and ZENDESK_ISSUE_FIELD_ID -->';
+
   return loadHomepageTemplate()
     .split('{{SUPPORT_EMAIL}}').join(supportEmail)
     .split('{{ZENDESK_WIDGET_SCRIPT}}').join(widgetScript)
+    .split('{{ZENDESK_PRECHAT_SCRIPT}}').join(prechatScript)
     .split('{{LIVE_CHAT_NOTE}}').join(liveChatNote);
 }
 
@@ -99,6 +150,8 @@ app.get('/api/health', (req, res) => {
     aiConfigured: !!(process.env.ANTHROPIC_API_KEY || '').trim(),
     zendeskWidgetConfigured: !!(process.env.ZENDESK_WIDGET_KEY || '').trim(),
     zendeskWebhookConfigured: !!(process.env.ZENDESK_WEBHOOK_SECRET || '').trim(),
+    zendeskApiConfigured: zendesk.isConfigured(),
+    zendeskPrechatConfigured: !!(process.env.ZENDESK_ISSUE_FIELD_ID || '').trim(),
     supportEmail: (process.env.SUPPORT_EMAIL || 'support@example.com').trim()
   });
 });
@@ -179,13 +232,25 @@ app.post('/api/zendesk-webhook', async (req, res) => {
   }
   try {
     const body = req.body || {};
-    const note = (body.description || '').toString().trim().slice(0, 4000);
     const name = (body.requester_name || '').toString().trim().slice(0, 200);
     const email = (body.requester_email || '').toString().trim().slice(0, 320);
     const phone = (body.requester_phone || '').toString().trim().slice(0, 60);
     const channel = inferChannel(body.channel);
     const zendeskTicketId = body.ticket_id ? String(body.ticket_id).slice(0, 60) : null;
     const zendeskTicketUrl = body.ticket_link ? String(body.ticket_link).slice(0, 500) : null;
+
+    // The trigger payload's own "description" placeholder is unreliable
+    // for chat/Messaging tickets (Zendesk hasn't synced the real customer
+    // message into the ticket's comments yet at the instant the "ticket
+    // created" trigger fires - it only sees an internal system note). If
+    // a Zendesk API token is configured, go fetch the real first public
+    // comment directly instead, retrying briefly for the sync to land.
+    // Falls back to the trigger payload's description if that's not
+    // configured or nothing comes back, so this never breaks the demo.
+    const fetchedNote = zendesk.isConfigured() && zendeskTicketId
+      ? await zendesk.getFirstPublicComment(zendeskTicketId)
+      : null;
+    const note = (fetchedNote || (body.description || '').toString()).trim().slice(0, 4000);
 
     if (!note) return res.status(400).json({ error: 'Missing ticket description in payload.' });
 
@@ -216,4 +281,5 @@ app.listen(PORT, () => {
   console.log(`  AI classification: ${!!(process.env.ANTHROPIC_API_KEY || '').trim()}`);
   console.log(`  Zendesk widget: ${!!(process.env.ZENDESK_WIDGET_KEY || '').trim()}`);
   console.log(`  Zendesk webhook secret set: ${!!(process.env.ZENDESK_WEBHOOK_SECRET || '').trim()}`);
+  console.log(`  Zendesk API (real comment fetch) configured: ${zendesk.isConfigured()}`);
 });
