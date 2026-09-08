@@ -1,0 +1,21 @@
+{
+  "name": "routing-desk-live",
+  "version": "1.0.0",
+  "description": "Customer-facing support intake demo: email/chat/call -> priority triage -> HubSpot ticket -> Slack notification.",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node test/triage.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

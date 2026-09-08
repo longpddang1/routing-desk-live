@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: routing-desk-live
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: HUBSPOT_TOKEN
+        sync: false
+      - key: HUBSPOT_PORTAL_ID
+        sync: false
+      - key: HUBSPOT_PIPELINE_ID
+        value: "0"
+      - key: HUBSPOT_PIPELINE_STAGE_ID
+        value: "1"
+      - key: SLACK_TECHNICAL_WEBHOOK_URL
+        sync: false
+      - key: SLACK_GENERAL_WEBHOOK_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-4-5

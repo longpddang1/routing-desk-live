@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact Support</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#f4f5f8; --surface:#ffffff; --surface-2:#eceef3; --border:#dde1e8;
+    --text:#1b2030; --text-muted:#5c6472; --text-faint:#8991a1;
+    --accent:#4338ca; --accent-ink:#ffffff; --accent-soft:#edebfc;
+    --general:#0f766e; --general-soft:#e5f4f2;
+    --warn:#b45309; --warn-soft:#fbf0df;
+    --success:#15803d; --success-soft:#e7f5ea;
+    --danger:#b3261e; --danger-soft:#fbeae9;
+    --shadow-sm:0 1px 2px rgba(24,28,45,0.06); --shadow-md:0 8px 28px rgba(24,28,45,0.10);
+    --radius:12px;
+    --font-display:'Fraunces',Georgia,serif;
+    --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;}
+  button{font-family:inherit;}
+  input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;}
+
+  .wrap{max-width:660px;margin:0 auto;padding:56px 22px 80px;}
+  .hero{text-align:center;margin-bottom:36px;}
+  .hero .mark{width:52px;height:52px;border-radius:14px;background:linear-gradient(155deg,var(--accent),var(--general));display:flex;align-items:center;justify-content:center;margin:0 auto 16px;}
+  .hero .mark svg{width:26px;height:26px;stroke:white;}
+  .hero h1{font-size:30px;font-weight:600;}
+  .hero p{color:var(--text-muted);margin:8px 0 0;font-size:15px;}
+
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:28px;}
+
+  .segmented{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:4px;gap:3px;margin-bottom:22px;}
+  .segmented button{flex:1;border:none;background:none;padding:11px 10px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .12s ease,color .12s ease;}
+  .segmented button svg{width:15px;height:15px;stroke:currentColor;flex-shrink:0;}
+  .segmented button.active{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-sm);}
+
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;}
+  .field label{font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  input[type=text],input[type=email],input[type=tel],textarea{
+    background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:11px 13px;color:var(--text);width:100%;
+    transition:border-color .12s ease, box-shadow .12s ease;
+  }
+  input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  textarea{resize:vertical;min-height:110px;}
+
+  .btn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);padding:13px 18px;font-size:15px;font-weight:600;cursor:pointer;transition:filter .12s ease,transform .05s ease;margin-top:6px;}
+  .btn:hover{filter:brightness(1.07);}
+  .btn:active{transform:translateY(1px);}
+  .btn:disabled{opacity:.55;cursor:not-allowed;}
+  .btn svg{width:16px;height:16px;stroke:currentColor;}
+
+  .err-text{color:var(--danger);font-size:13px;margin-top:2px;background:var(--danger-soft);padding:9px 12px;border-radius:8px;}
+
+  .result{margin-top:22px;border-radius:12px;border:1px solid var(--border);overflow:hidden;}
+  .result-head{padding:18px 20px;display:flex;gap:12px;align-items:flex-start;}
+  .result-head .icon{width:36px;height:36px;border-radius:9px;background:var(--success);color:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .result-head .icon svg{width:18px;height:18px;stroke:currentColor;}
+  .result-head h3{font-size:16px;font-weight:600;}
+  .result-head p{margin:3px 0 0;font-size:13px;color:var(--text-muted);}
+
+  .demo-panel{background:var(--surface-2);padding:18px 20px;border-top:1px dashed var(--border);}
+  .demo-panel .demo-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);font-weight:700;margin-bottom:10px;}
+  .demo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+  .demo-cell{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 12px;}
+  .demo-cell .l{font-size:10.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+  .demo-cell .v{font-size:13.5px;font-weight:600;}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;}
+  .badge.p1{background:var(--danger-soft);color:var(--danger);}
+  .badge.p2{background:var(--warn-soft);color:var(--warn);}
+  .badge.p3{background:var(--general-soft);color:var(--general);}
+  .badge.ok{background:var(--success-soft);color:var(--success);}
+  .badge.fail{background:var(--danger-soft);color:var(--danger);}
+  .demo-links{margin-top:12px;font-size:13px;}
+  .demo-links a{color:var(--accent);font-weight:600;text-decoration:none;}
+  .demo-links a:hover{text-decoration:underline;}
+
+  .footnote{text-align:center;margin-top:22px;font-size:12px;color:var(--text-faint);}
+
+  @media (max-width:520px){ .row2{grid-template-columns:1fr;} .wrap{padding:36px 16px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 18 0v5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/><path d="M3 12v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3"/></svg></div>
+    <h1>Contact support</h1>
+    <p>Tell us what's going on and we'll get you routed to the right place.</p>
+  </div>
+
+  <div class="panel">
+    <div class="segmented" id="channelSeg">
+      <button type="button" data-chan="email" class="active">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        Email
+      </button>
+      <button type="button" data-chan="chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        Live chat
+      </button>
+      <button type="button" data-chan="phone">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Call us
+      </button>
+    </div>
+
+    <form id="ticketForm">
+      <div class="row2">
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="fName" placeholder="Jordan Price">
+        </div>
+        <div class="field">
+          <label id="fEmailLabel">Email address</label>
+          <input type="text" id="fEmail" placeholder="you@company.com">
+        </div>
+      </div>
+      <div class="field" id="phoneField" style="display:none;">
+        <label>Phone number</label>
+        <input type="tel" id="fPhone" placeholder="(555) 123-4567">
+      </div>
+      <div class="field">
+        <label id="fNoteLabel">What do you need help with?</label>
+        <textarea id="fNote" placeholder="Describe the issue..."></textarea>
+      </div>
+      <div id="formError"></div>
+      <button type="submit" class="btn" id="submitBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/></svg>
+        <span id="submitLabel">Submit</span>
+      </button>
+    </form>
+
+    <div id="resultArea"></div>
+  </div>
+
+  <p class="footnote">This is a live demo intake form. Submissions create a real ticket in HubSpot and notify the on-call Slack channel.</p>
+</div>
+
+<script>
+(function(){
+  const state = { channel: 'email' };
+
+  const seg = document.getElementById('channelSeg');
+  seg.querySelectorAll('[data-chan]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.channel = btn.dataset.chan;
+      seg.querySelectorAll('[data-chan]').forEach(b => b.classList.toggle('active', b === btn));
+      const phoneField = document.getElementById('phoneField');
+      const emailLabel = document.getElementById('fEmailLabel');
+      const noteLabel = document.getElementById('fNoteLabel');
+      if (state.channel === 'phone') {
+        phoneField.style.display = '';
+        emailLabel.textContent = 'Email address (optional)';
+        noteLabel.textContent = 'What did the caller say? (call notes)';
+      } else if (state.channel === 'chat') {
+        phoneField.style.display = 'none';
+        emailLabel.textContent = 'Email address';
+        noteLabel.textContent = 'Type your message';
+      } else {
+        phoneField.style.display = 'none';
+        emailLabel.textContent = 'Email address';
+        noteLabel.textContent = 'What do you need help with?';
+      }
+    });
+  });
+
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function slackBadge(slack){
+    if (!slack) return '';
+    if (slack.sent) return `<span class="badge ok">Posted to #${esc(slack.tier)}</span>`;
+    return `<span class="badge fail">Slack: ${esc(slack.reason || 'not sent')}</span>`;
+  }
+
+  const form = document.getElementById('ticketForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const submitLabel = document.getElementById('submitLabel');
+  const resultArea = document.getElementById('resultArea');
+  const formError = document.getElementById('formError');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    formError.innerHTML = '';
+    resultArea.innerHTML = '';
+
+    const payload = {
+      channel: state.channel,
+      name: document.getElementById('fName').value.trim(),
+      email: document.getElementById('fEmail').value.trim(),
+      phone: document.getElementById('fPhone').value.trim(),
+      note: document.getElementById('fNote').value.trim()
+    };
+
+    submitBtn.disabled = true;
+    submitLabel.textContent = 'Submitting…';
+
+    try {
+      const resp = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        formError.innerHTML = `<div class="err-text">${esc(data.error || 'Something went wrong.')}</div>`;
+        return;
+      }
+
+      const pr = (data.priority || 'P3').toLowerCase();
+      resultArea.innerHTML = `
+        <div class="result">
+          <div class="result-head">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <div>
+              <h3>Thanks — we've got it.</h3>
+              <p>Your message was received and a support ticket has been opened. Someone will follow up shortly.</p>
+            </div>
+          </div>
+          <div class="demo-panel">
+            <div class="demo-label">Live behind the scenes (for this demo)</div>
+            <div class="demo-grid">
+              <div class="demo-cell"><div class="l">Priority</div><div class="v"><span class="badge ${pr}">${esc(data.priority || '—')}</span></div></div>
+              <div class="demo-cell"><div class="l">Category</div><div class="v">${esc(data.category || 'Uncategorized')}</div></div>
+              <div class="demo-cell"><div class="l">Classified by</div><div class="v">${data.classifiedBy === 'ai' ? 'AI' : 'Keyword rules'}</div></div>
+              <div class="demo-cell"><div class="l">Slack</div><div class="v">${slackBadge(data.slack)}</div></div>
+            </div>
+            <div class="demo-links">
+              ${data.hubspotUrl ? `<a href="${esc(data.hubspotUrl)}" target="_blank" rel="noopener">Open the HubSpot ticket &rarr;</a>` : (data.hubspotDryRun ? 'HubSpot: dry run (no HUBSPOT_TOKEN configured on the server yet) — ticket id ' + esc(data.ticketId) : '')}
+            </div>
+          </div>
+        </div>
+      `;
+      form.reset();
+      document.getElementById('phoneField').style.display = state.channel === 'phone' ? '' : 'none';
+    } catch (err) {
+      formError.innerHTML = `<div class="err-text">Network error: ${esc(err.message)}</div>`;
+    } finally {
+      submitBtn.disabled = false;
+      submitLabel.textContent = 'Submit';
+    }
+  });
+})();
+</script>
+</body>
+</html>
