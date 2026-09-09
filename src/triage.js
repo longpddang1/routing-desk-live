@@ -74,7 +74,15 @@ const PRIORITY_RULES = {
     'degraded', 'some customers', 'some users', 'intermittent', 'sync delayed', 'delayed sync',
     'dashboard is down', 'reporting is down', 'reporting dashboard down', 'slow to load',
     'partially working', 'workaround', 'payments failing for some', 'integration is failing for some',
-    'syncing delayed', 'looping', 'redirect loop'
+    'syncing delayed', 'looping', 'redirect loop',
+    // A blocked-but-scoped workflow: the customer can't finish a core task,
+    // but it isn't a platform-wide outage. These phrasings came out of real
+    // misclassifications where the rules defaulted to P3 because no literal
+    // P2 phrase appeared.
+    'sync error', 'sync failed', 'failed to sync', 'not syncing', 'stuck in',
+    'stuck on', 'error state', 'keeps failing', 'failing for', 'unable to complete',
+    "won't let me", 'wont let me', "can't push", 'cannot push', "can't submit",
+    'cannot submit', "can't process", 'blocked from', 'not going through'
   ],
   P3: [
     'how do i', 'how to', 'export fail', 'export failed', 'export failure', 'password reset',

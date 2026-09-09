@@ -97,6 +97,12 @@ function ticketMessage(ticket) {
         emoji: true
       }
     },
+    // When AI triage is on, lead with its one-line read. An agent scanning
+    // a busy queue gets the gist before deciding whether to read the raw
+    // message - which matters most for long email threads.
+    ...((ticket.summary || '').trim()
+      ? [{ type: 'section', text: { type: 'mrkdwn', text: `*${truncate(ticket.summary, 300)}*` } }]
+      : []),
     {
       type: 'section',
       text: {
@@ -153,11 +159,14 @@ function ticketMessage(ticket) {
     });
   }
 
+  const how = (ticket.classifiedBy || '').startsWith('ai')
+    ? 'triaged by AI'
+    : 'triaged by keyword rules';
   blocks.push({
     type: 'context',
     elements: [{
       type: 'mrkdwn',
-      text: `${style.label} · triaged automatically${ticket.zendeskTicketId ? ` · Zendesk #${ticket.zendeskTicketId}` : ''}`
+      text: `${style.label} · ${how}${ticket.zendeskTicketId ? ` · Zendesk #${ticket.zendeskTicketId}` : ''}`
     }]
   });
 
