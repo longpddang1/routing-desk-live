@@ -118,6 +118,7 @@ async function createTicket(fields) {
     `Channel: ${fields.channel}`,
     fields.email ? `Email: ${fields.email}` : null,
     fields.phone ? `Phone: ${fields.phone}` : null,
+    fields.queue ? `Queue: ${fields.queue}` : null,
     fields.company ? `Company: ${fields.company}${fields.companyInferred ? ' (inferred from email domain)' : ''}` : null,
     fields.zendeskTicketId ? `Zendesk ticket: #${fields.zendeskTicketId}` : null,
     fields.zendeskTicketUrl ? `Zendesk link: ${fields.zendeskTicketUrl}` : null
@@ -151,6 +152,12 @@ async function createTicket(fields) {
   if (categoryProperty && fields.category) {
     properties[categoryProperty] = fields.category;
   }
+  // Same pattern for the routing queue (HUBSPOT_QUEUE_PROPERTY), so the
+  // owning team is a filterable property rather than buried in the body.
+  const queueProperty = (process.env.HUBSPOT_QUEUE_PROPERTY || '').trim();
+  if (queueProperty && fields.queue) {
+    properties[queueProperty] = fields.queue;
+  }
 
   let created;
   try {
@@ -159,9 +166,11 @@ async function createTicket(fields) {
       body: JSON.stringify({ properties })
     });
   } catch (e) {
-    if (categoryProperty && properties[categoryProperty] !== undefined) {
-      console.error(`[hubspot] ticket create failed with category property "${categoryProperty}" (${e.message}); retrying without it.`);
+    if ((categoryProperty && properties[categoryProperty] !== undefined)
+        || (queueProperty && properties[queueProperty] !== undefined)) {
+      console.error(`[hubspot] ticket create failed with custom properties (${e.message}); retrying without them.`);
       delete properties[categoryProperty];
+      delete properties[queueProperty];
       created = await hsFetch('/crm/v3/objects/tickets', {
         method: 'POST',
         body: JSON.stringify({ properties })

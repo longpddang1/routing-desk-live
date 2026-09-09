@@ -36,6 +36,37 @@ function webhookForPriority(priority) {
   return (url || '').trim() || null;
 }
 
+/* Optional per-queue routing.
+   SLACK_QUEUE_WEBHOOKS is a JSON object mapping queue name -> webhook URL,
+   e.g. {"Risk":"https://hooks.slack.com/...","AP Support":"https://..."}.
+   Any queue not listed falls back to the priority-based channels, so this
+   can be adopted one team at a time instead of all nine at once. */
+let queueMapCache = null;
+let queueMapRaw = null;
+function queueWebhookMap() {
+  const raw = (process.env.SLACK_QUEUE_WEBHOOKS || '').trim();
+  if (raw === queueMapRaw) return queueMapCache;
+  queueMapRaw = raw;
+  if (!raw) { queueMapCache = {}; return queueMapCache; }
+  try {
+    const parsed = JSON.parse(raw);
+    queueMapCache = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) {
+    console.error('[slack] SLACK_QUEUE_WEBHOOKS is not valid JSON; falling back to priority routing:', e.message);
+    queueMapCache = {};
+  }
+  return queueMapCache;
+}
+
+/** Queue-specific channel if one is configured, else the priority channel. */
+function webhookForTicket(ticket) {
+  const byQueue = queueWebhookMap();
+  const q = (ticket.queue || '').trim();
+  const url = (q && byQueue[q]) ? String(byQueue[q]).trim() : '';
+  if (url) return { url, routedBy: 'queue' };
+  return { url: webhookForPriority(ticket.priority), routedBy: 'priority' };
+}
+
 async function postToWebhook(url, payload) {
   if (!url) return { sent: false, reason: 'No webhook URL configured for this queue.' };
   try {
@@ -115,6 +146,11 @@ function ticketMessage(ticket) {
     {
       type: 'section',
       fields: [
+        // Queue first: for an agent scanning the channel, "is this mine?"
+        // is the question that comes before anything else on the card.
+        ...((ticket.queue || '').trim()
+          ? [{ type: 'mrkdwn', text: `*Queue*\n${ticket.queue.trim()}` }]
+          : []),
         { type: 'mrkdwn', text: `*From*\n${who}` },
         { type: 'mrkdwn', text: `*Contact*\n${contactLine(ticket)}` },
         ...((ticket.company || '').trim()
@@ -180,10 +216,12 @@ function ticketMessage(ticket) {
 
 /** Posts a new-ticket notification to the correct queue's webhook. Returns { sent, reason, tier }. */
 async function postTicketNotification(ticket) {
-  const tier = (ticket.priority === 'P1' || ticket.priority === 'P2') ? 'technical' : 'general';
-  const url = webhookForPriority(ticket.priority);
+  const { url, routedBy } = webhookForTicket(ticket);
+  const tier = routedBy === 'queue'
+    ? ticket.queue
+    : ((ticket.priority === 'P1' || ticket.priority === 'P2') ? 'technical' : 'general');
   const res = await postToWebhook(url, ticketMessage(ticket));
-  return { ...res, tier };
+  return { ...res, tier, routedBy };
 }
 
-module.exports = { postTicketNotification, postToWebhook, webhookForPriority, ticketMessage, PRIORITY_STYLE };
+module.exports = { postTicketNotification, postToWebhook, webhookForPriority, webhookForTicket, ticketMessage, PRIORITY_STYLE };
