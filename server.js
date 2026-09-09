@@ -280,7 +280,35 @@ app.post('/api/zendesk-webhook', async (req, res) => {
     const fetchedNote = zendesk.isConfigured() && zendeskTicketId
       ? await zendesk.getFirstPublicComment(zendeskTicketId)
       : null;
-    const note = (fetchedNote || (body.description || '').toString()).trim().slice(0, 4000);
+
+    /* Two intake shapes land here:
+
+       CHAT - the AI agent collects the issue and writes it to a custom
+       ticket field; the trigger sends it as `description`. The ticket's
+       own description is just Zendesk's "Conversation with <name>" stub,
+       and its subject is the same stub, so both are useless.
+
+       EMAIL - no bot is involved, so the custom field is empty, but the
+       ticket has a real subject and a real body. The trigger sends those
+       as `subject` and `description_fallback`.
+
+       Preferring them in that order means one trigger and one endpoint
+       serve both channels with no branching. */
+    const bodyText = (
+      fetchedNote
+      || (body.description || '').toString().trim()
+      || (body.description_fallback || '').toString().trim()
+    ).trim();
+
+    // Zendesk titles messaging tickets "Conversation with <name>", which
+    // is noise in a subject line and would skew keyword triage.
+    const subjectRaw = (body.subject || '').toString().trim();
+    const subject = /^conversation with\b/i.test(subjectRaw) ? '' : subjectRaw;
+
+    const note = (subject && !bodyText.toLowerCase().startsWith(subject.toLowerCase())
+      ? `${subject}\n\n${bodyText}`
+      : bodyText
+    ).trim().slice(0, 4000);
 
     if (!note) return res.status(400).json({ error: 'Missing ticket description in payload.' });
 
