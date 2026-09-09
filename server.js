@@ -146,6 +146,10 @@ async function createAndRouteTicket(fields, meta) {
     companyInferred: !statedCompany && !!inferredCompany,
     note: fields.note,
     category: result.category,
+    // Only present when AI classification is enabled - a one-line read of
+    // what the customer needs, written for an agent scanning a queue.
+    summary: result.summary || null,
+    classifiedBy: result.classifiedBy,
     priority,
     zendeskTicketId: meta.zendeskTicketId || null,
     zendeskTicketUrl: meta.zendeskTicketUrl || null
