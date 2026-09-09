@@ -56,7 +56,7 @@ async function hsFetch(path, options) {
 }
 
 /** Find a contact by email, or create one. Returns the contact id, or null on failure (never throws - contact linking is best-effort). */
-async function upsertContact({ email, name, phone }) {
+async function upsertContact({ email, name, phone, company }) {
   if (!isConfigured()) return { id: 'dry-run-contact', dryRun: true };
   if (!email) return null;
   try {
@@ -78,7 +78,8 @@ async function upsertContact({ email, name, phone }) {
           email,
           firstname: firstname || undefined,
           lastname: rest.join(' ') || undefined,
-          phone: phone || undefined
+          phone: phone || undefined,
+          company: company || undefined
         }
       })
     });
@@ -110,32 +111,67 @@ async function createTicket(fields) {
   const stage = (process.env.HUBSPOT_PIPELINE_STAGE_ID || '1').trim();
   const subject = `[${fields.priority}] ${fields.category || 'Uncategorized'} - ${fields.name || fields.email || fields.phone || 'New ticket'}`;
   const content = [
+    fields.summary ? `Summary: ${fields.summary}` : null,
+    fields.summary ? '' : null,
     fields.note || '',
     '',
     `Channel: ${fields.channel}`,
     fields.email ? `Email: ${fields.email}` : null,
-    fields.phone ? `Phone: ${fields.phone}` : null
-  ].filter(Boolean).join('\n');
+    fields.phone ? `Phone: ${fields.phone}` : null,
+    fields.company ? `Company: ${fields.company}${fields.companyInferred ? ' (inferred from email domain)' : ''}` : null,
+    fields.zendeskTicketId ? `Zendesk ticket: #${fields.zendeskTicketId}` : null,
+    fields.zendeskTicketUrl ? `Zendesk link: ${fields.zendeskTicketUrl}` : null
+    // Drop only omitted lines (null) - empty strings are intentional blank
+    // lines separating the summary, the message, and the metadata block.
+  ].filter((line) => line !== null && line !== undefined).join('\n');
 
   if (!isConfigured()) {
     const id = 'dry-run-' + Date.now();
     return { id, url: null, dryRun: true };
   }
 
-  const created = await hsFetch('/crm/v3/objects/tickets', {
-    method: 'POST',
-    body: JSON.stringify({
-      properties: {
-        subject,
-        content,
-        hs_pipeline: pipeline,
-        hs_pipeline_stage: stage,
-        hs_ticket_priority: PRIORITY_TO_HUBSPOT[fields.priority] || 'MEDIUM'
-      }
-    })
-  });
+  const properties = {
+    subject,
+    content,
+    hs_pipeline: pipeline,
+    hs_pipeline_stage: stage,
+    hs_ticket_priority: PRIORITY_TO_HUBSPOT[fields.priority] || 'MEDIUM'
+  };
 
-  const contactId = await upsertContact({ email: fields.email, name: fields.name, phone: fields.phone });
+  /* Write the triage category to a HubSpot ticket property so it can be
+     filtered, reported on and used in workflows - not just read in the
+     subject line. Set HUBSPOT_CATEGORY_PROPERTY to the property's
+     internal name (a single-line text property is safest: it accepts any
+     category string, so adding categories later needs no HubSpot change).
+
+     If the property doesn't exist or rejects the value, HubSpot 400s the
+     whole request - which would mean losing the ticket over a metadata
+     field. So we retry once without it rather than fail the ticket. */
+  const categoryProperty = (process.env.HUBSPOT_CATEGORY_PROPERTY || '').trim();
+  if (categoryProperty && fields.category) {
+    properties[categoryProperty] = fields.category;
+  }
+
+  let created;
+  try {
+    created = await hsFetch('/crm/v3/objects/tickets', {
+      method: 'POST',
+      body: JSON.stringify({ properties })
+    });
+  } catch (e) {
+    if (categoryProperty && properties[categoryProperty] !== undefined) {
+      console.error(`[hubspot] ticket create failed with category property "${categoryProperty}" (${e.message}); retrying without it.`);
+      delete properties[categoryProperty];
+      created = await hsFetch('/crm/v3/objects/tickets', {
+        method: 'POST',
+        body: JSON.stringify({ properties })
+      });
+    } else {
+      throw e;
+    }
+  }
+
+  const contactId = await upsertContact({ email: fields.email, name: fields.name, phone: fields.phone, company: fields.company });
   if (contactId && !(contactId && contactId.dryRun)) {
     await associateTicketToContact(created.id, contactId);
   }

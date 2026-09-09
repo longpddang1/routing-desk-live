@@ -74,7 +74,15 @@ const PRIORITY_RULES = {
     'degraded', 'some customers', 'some users', 'intermittent', 'sync delayed', 'delayed sync',
     'dashboard is down', 'reporting is down', 'reporting dashboard down', 'slow to load',
     'partially working', 'workaround', 'payments failing for some', 'integration is failing for some',
-    'syncing delayed', 'looping', 'redirect loop'
+    'syncing delayed', 'looping', 'redirect loop',
+    // A blocked-but-scoped workflow: the customer can't finish a core task,
+    // but it isn't a platform-wide outage. These phrasings came out of real
+    // misclassifications where the rules defaulted to P3 because no literal
+    // P2 phrase appeared.
+    'sync error', 'sync failed', 'failed to sync', 'not syncing', 'stuck in',
+    'stuck on', 'error state', 'keeps failing', 'failing for', 'unable to complete',
+    "won't let me", 'wont let me', "can't push", 'cannot push', "can't submit",
+    'cannot submit', "can't process", 'blocked from', 'not going through'
   ],
   P3: [
     'how do i', 'how to', 'export fail', 'export failed', 'export failure', 'password reset',
@@ -154,10 +162,19 @@ ${text.slice(0, 6000)}
   return parsed;
 }
 
+const PRIORITY_RANK = { P1: 3, P2: 2, P3: 1 };
+
 /**
  * Full triage: always computes the rule-based result (guaranteed to
  * work with no external calls); if an AI key is configured, tries the
  * AI path and falls back to rules on any failure.
+ *
+ * Safety net: the AI is allowed to escalate a ticket the keyword rules
+ * missed (rules are deliberately narrow, so this is common and good),
+ * but it is never allowed to *downgrade* a priority the keyword rules
+ * already flagged with high confidence - e.g. an exact phrase like
+ * "completely down" always keeps its P1 floor even if the AI call
+ * comes back less severe. Whichever signal is more urgent wins.
  */
 async function triage(text, categories) {
   const rule = ruleBasedTriage(text, categories);
@@ -167,11 +184,13 @@ async function triage(text, categories) {
   try {
     const ai = await classifyWithAI(text, categories);
     const catNames = (categories && categories.length ? categories : DEFAULT_CATEGORIES).map((c) => c.name);
+    const aiIsMoreUrgent = PRIORITY_RANK[ai.priority] >= PRIORITY_RANK[rule.priority];
+    const priority = aiIsMoreUrgent ? ai.priority : rule.priority;
     return {
       category: catNames.includes(ai.category) ? ai.category : rule.category,
-      priority: ai.priority,
+      priority,
       summary: ai.summary || null,
-      classifiedBy: 'ai',
+      classifiedBy: aiIsMoreUrgent ? 'ai' : 'rules (overrode a less-urgent AI result)',
       aiError: null
     };
   } catch (e) {
