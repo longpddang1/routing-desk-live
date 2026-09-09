@@ -56,7 +56,7 @@ async function hsFetch(path, options) {
 }
 
 /** Find a contact by email, or create one. Returns the contact id, or null on failure (never throws - contact linking is best-effort). */
-async function upsertContact({ email, name, phone }) {
+async function upsertContact({ email, name, phone, company }) {
   if (!isConfigured()) return { id: 'dry-run-contact', dryRun: true };
   if (!email) return null;
   try {
@@ -78,7 +78,8 @@ async function upsertContact({ email, name, phone }) {
           email,
           firstname: firstname || undefined,
           lastname: rest.join(' ') || undefined,
-          phone: phone || undefined
+          phone: phone || undefined,
+          company: company || undefined
         }
       })
     });
@@ -115,6 +116,7 @@ async function createTicket(fields) {
     `Channel: ${fields.channel}`,
     fields.email ? `Email: ${fields.email}` : null,
     fields.phone ? `Phone: ${fields.phone}` : null,
+    fields.company ? `Company: ${fields.company}${fields.companyInferred ? ' (inferred from email domain)' : ''}` : null,
     fields.zendeskTicketId ? `Zendesk ticket: #${fields.zendeskTicketId}` : null,
     fields.zendeskTicketUrl ? `Zendesk link: ${fields.zendeskTicketUrl}` : null
   ].filter(Boolean).join('\n');
@@ -137,7 +139,7 @@ async function createTicket(fields) {
     })
   });
 
-  const contactId = await upsertContact({ email: fields.email, name: fields.name, phone: fields.phone });
+  const contactId = await upsertContact({ email: fields.email, name: fields.name, phone: fields.phone, company: fields.company });
   if (contactId && !(contactId && contactId.dryRun)) {
     await associateTicketToContact(created.id, contactId);
   }

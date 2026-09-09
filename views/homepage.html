@@ -127,13 +127,6 @@
   .support-visual .chat-head{display:flex;align-items:center;gap:9px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
   .support-visual .chat-head .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;}
   .support-visual .chat-head span{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
-  .support-visual h4{font-size:16px;font-weight:700;margin:0 0 6px;}
-  .support-visual .lede{font-size:13.5px;color:var(--ink-soft);margin:0 0 14px;max-width:none;}
-  .support-visual textarea{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:11px;padding:12px 13px;font:inherit;font-size:14px;line-height:1.5;color:var(--ink);resize:vertical;min-height:96px;background:var(--bg-alt);}
-  .support-visual textarea:focus{outline:none;border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px var(--accent-soft);}
-  .support-visual .prechat-actions{display:flex;align-items:center;gap:12px;margin-top:12px;}
-  .support-visual .prechat-hint{font-size:12.5px;color:var(--ink-faint);margin:10px 0 0;}
-  .support-visual .prechat-done{display:none;font-size:13.5px;color:var(--ink-soft);margin:12px 0 0;}
 
   /* ---------- Footer ---------- */
   footer.site{padding:60px 0 34px;border-top:1px solid var(--border);}
@@ -323,16 +316,9 @@
       </div>
       <div class="support-visual">
         <div class="chat-head"><span class="dot"></span><span>Support · usually replies in a few minutes</span></div>
-        <h4>Start a conversation</h4>
-        <p class="lede">Tell us what's going on and we'll open a chat with the details already attached — no need to repeat yourself.</p>
-        <form id="prechat-form" novalidate>
-          <textarea id="prechat-input" placeholder="Briefly, what's going on?" aria-label="Briefly, what's going on?"></textarea>
-          <div class="prechat-actions">
-            <button type="submit" class="btn btn-primary">Start chat</button>
-          </div>
-        </form>
-        <p class="prechat-hint">Your message is triaged automatically and routed to the right team.</p>
-        <p class="prechat-done" id="prechat-done">Thanks — opening chat now with your message attached.</p>
+        <div class="chat-bubble">Hey there, how can I help you today?</div>
+        <div class="chat-bubble me">Our production system is completely down, this is urgent.</div>
+        <div class="chat-bubble">Got it — connecting you with someone now.</div>
       </div>
     </div>
   </div>
@@ -384,6 +370,5 @@
 </footer>
 
 {{ZENDESK_WIDGET_SCRIPT}}
-{{ZENDESK_PRECHAT_SCRIPT}}
 </body>
 </html>

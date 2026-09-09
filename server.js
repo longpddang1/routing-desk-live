@@ -20,6 +20,55 @@ function isValidEmailShape(e) {
 }
 
 /* ---------------------------------------------------------------
+   Company inference from an email domain.
+
+   A B2B support desk almost always cares which account a ticket
+   belongs to, but asking "what company are you with?" is one more
+   question between an angry customer and a human. The domain
+   already answers it for business addresses, so we derive it and
+   mark the value as inferred (never presented as confirmed fact).
+
+   Consumer mailbox providers are excluded - otherwise every Gmail
+   user gets filed under "Gmail". A personal address simply yields
+   no company, which is the honest answer.
+----------------------------------------------------------------*/
+const CONSUMER_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'ymail.com',
+  'hotmail.com', 'hotmail.co.uk', 'outlook.com', 'live.com', 'msn.com',
+  'icloud.com', 'me.com', 'mac.com', 'aol.com', 'gmx.com', 'gmx.de',
+  'proton.me', 'protonmail.com', 'pm.me', 'yandex.com', 'zoho.com',
+  'fastmail.com', 'hey.com', 'duck.com', 'tutanota.com', 'mail.com',
+  'comcast.net', 'verizon.net', 'sbcglobal.net', 'btinternet.com'
+]);
+
+// Second-level labels that are part of the public suffix rather than the
+// organisation's own name (acme.co.uk -> Acme, not Co).
+const PUBLIC_SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'ac', 'gov', 'edu', 'or', 'ne']);
+
+function companyFromEmail(rawEmail) {
+  const email = (rawEmail || '').trim().toLowerCase();
+  const match = /^[^\s@]+@([^\s@]+\.[^\s@]+)$/.exec(email);
+  if (!match) return null;
+
+  const domain = match[1];
+  if (CONSUMER_EMAIL_DOMAINS.has(domain)) return null;
+
+  const parts = domain.split('.').filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const core = (parts.length >= 3 && PUBLIC_SECOND_LEVEL.has(parts[parts.length - 2]))
+    ? parts[parts.length - 3]
+    : parts[parts.length - 2];
+  if (!core || core.length < 2) return null;
+
+  return core
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/* ---------------------------------------------------------------
    Homepage - a small server-rendered template (not a static file)
    so the Zendesk widget script and support email can be injected
    from environment variables without touching HTML.
@@ -43,59 +92,26 @@ function renderHomepage() {
     ? 'Click the chat bubble in the corner of this page — a real person (backed by our own routing automation) will be right with you.'
     : "Live chat isn't connected yet — reach out by email in the meantime.";
 
-  /* Pre-chat capture.
-     Zendesk Messaging keeps chat content in its own conversation event
+  /* Note on how chat text reaches this service:
+     Zendesk Messaging keeps conversation content in its own event
      stream, NOT in the ticket's comment field - so trigger placeholders
      like {{ticket.description}} and {{ticket.comments_formatted}} can
-     never see what the customer typed (they only ever resolve to the
-     internal "Conversation with <name>" stub). The supported way to get
-     real text onto the ticket is the Web Widget's conversationFields
-     API, which writes a value into a custom ticket field before the
-     conversation starts. We capture the customer's issue on the page,
-     push it into that field, then open the widget - so the Zendesk
-     trigger can read it back with {{ticket.ticket_field_<id>}}.
-     The custom field must have "Customers can edit" enabled. */
-  const issueFieldId = (process.env.ZENDESK_ISSUE_FIELD_ID || '').trim();
-  const prechatScript = (widgetKey && issueFieldId)
-    ? `<script>
-(function () {
-  var FIELD_ID = ${JSON.stringify(issueFieldId)};
-  var form = document.getElementById('prechat-form');
-  var input = document.getElementById('prechat-input');
-  var done = document.getElementById('prechat-done');
-  if (!form || !input) return;
-
-  // The widget snippet loads asynchronously; zE queues commands once it
-  // exists, so poll briefly rather than assuming it's ready on submit.
-  function withWidget(cb, tries) {
-    tries = tries == null ? 40 : tries;
-    if (typeof window.zE === 'function') { cb(); return; }
-    if (tries <= 0) return;
-    setTimeout(function () { withWidget(cb, tries - 1); }, 150);
-  }
-
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var text = (input.value || '').trim();
-    if (!text) { input.focus(); return; }
-    withWidget(function () {
-      try {
-        window.zE('messenger:set', 'conversationFields', [{ id: FIELD_ID, value: text }]);
-        window.zE('messenger', 'open');
-        if (done) done.style.display = 'block';
-      } catch (err) {
-        console.error('[prechat] could not hand off to the widget:', err);
-      }
-    });
-  });
-})();
-</script>`
-    : '<!-- Pre-chat capture inactive: needs ZENDESK_WIDGET_KEY and ZENDESK_ISSUE_FIELD_ID -->';
+     never see what the customer typed (they only resolve to an internal
+     "Conversation with <name>" stub, and are additionally suppressed on
+     ticket-created triggers by Zendesk's anti-spam rules).
+     The working path is entirely inside Zendesk: the AI agent's flow
+     asks "what's going on?", collects the answer as a parameter, and on
+     escalation runs a Sunshine Conversations "Update conversation"
+     action writing metadata key zen:ticket_field:<ZENDESK_ISSUE_FIELD_ID>.
+     Zendesk maps that onto the custom ticket field (which must be a Text
+     field with "Customers can edit" enabled), and the ticket trigger
+     sends it here as {{ticket.ticket_field_<id>}} in the webhook body.
+     Target must be "Sunshine Conversations", not "Conversation" - the
+     latter is the bot's internal scratch context and never leaves it. */
 
   return loadHomepageTemplate()
     .split('{{SUPPORT_EMAIL}}').join(supportEmail)
     .split('{{ZENDESK_WIDGET_SCRIPT}}').join(widgetScript)
-    .split('{{ZENDESK_PRECHAT_SCRIPT}}').join(prechatScript)
     .split('{{LIVE_CHAT_NOTE}}').join(liveChatNote);
 }
 
@@ -116,11 +132,18 @@ async function createAndRouteTicket(fields, meta) {
   const result = await triage(fields.note, DEFAULT_CATEGORIES);
   const priority = ['P1', 'P2', 'P3'].includes(fields.priority) ? fields.priority : result.priority;
 
+  // A company the customer told us always wins; otherwise infer one from
+  // their email domain and flag it as inferred so the UI can say so.
+  const statedCompany = (fields.company || '').trim();
+  const inferredCompany = statedCompany ? null : companyFromEmail(fields.email);
+
   const ticketFields = {
     channel: fields.channel,
     name: fields.name,
     email: fields.email,
     phone: fields.phone,
+    company: statedCompany || inferredCompany || '',
+    companyInferred: !statedCompany && !!inferredCompany,
     note: fields.note,
     category: result.category,
     priority,
@@ -151,7 +174,7 @@ app.get('/api/health', (req, res) => {
     zendeskWidgetConfigured: !!(process.env.ZENDESK_WIDGET_KEY || '').trim(),
     zendeskWebhookConfigured: !!(process.env.ZENDESK_WEBHOOK_SECRET || '').trim(),
     zendeskApiConfigured: zendesk.isConfigured(),
-    zendeskPrechatConfigured: !!(process.env.ZENDESK_ISSUE_FIELD_ID || '').trim(),
+    zendeskIssueFieldConfigured: !!(process.env.ZENDESK_ISSUE_FIELD_ID || '').trim(),
     supportEmail: (process.env.SUPPORT_EMAIL || 'support@example.com').trim()
   });
 });
@@ -233,8 +256,15 @@ app.post('/api/zendesk-webhook', async (req, res) => {
   try {
     const body = req.body || {};
     const name = (body.requester_name || '').toString().trim().slice(0, 200);
-    const email = (body.requester_email || '').toString().trim().slice(0, 320);
+    // Zendesk won't accept an email silently set on an anonymous messaging
+    // user (it treats end-user email as a verified identity), so
+    // requester_email is usually blank for chat. The bot instead captures
+    // the address into a custom ticket field; the trigger sends it as
+    // customer_email, and we prefer that when the requester record is bare.
+    const email = ((body.customer_email || '').toString().trim()
+      || (body.requester_email || '').toString().trim()).slice(0, 320);
     const phone = (body.requester_phone || '').toString().trim().slice(0, 60);
+    const company = (body.company || '').toString().trim().slice(0, 200);
     const channel = inferChannel(body.channel);
     const zendeskTicketId = body.ticket_id ? String(body.ticket_id).slice(0, 60) : null;
     const zendeskTicketUrl = body.ticket_link ? String(body.ticket_link).slice(0, 500) : null;
@@ -255,7 +285,7 @@ app.post('/api/zendesk-webhook', async (req, res) => {
     if (!note) return res.status(400).json({ error: 'Missing ticket description in payload.' });
 
     const { triageResult, priority, hsTicket, slackResult } = await createAndRouteTicket(
-      { channel, name, email, phone, note },
+      { channel, name, email, phone, company, note },
       { zendeskTicketId, zendeskTicketUrl }
     );
 
