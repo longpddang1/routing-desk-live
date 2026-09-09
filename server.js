@@ -146,6 +146,10 @@ async function createAndRouteTicket(fields, meta) {
     companyInferred: !statedCompany && !!inferredCompany,
     note: fields.note,
     category: result.category,
+    // The team that should actually work this - a separate judgment from
+    // category (a stolen card and a spend-limit question are both "Card
+    // Controls" but belong to Risk and Card Ops respectively).
+    queue: result.queue || null,
     // Only present when AI classification is enabled - a one-line read of
     // what the customer needs, written for an agent scanning a queue.
     summary: result.summary || null,
