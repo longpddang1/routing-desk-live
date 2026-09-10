@@ -45,23 +45,65 @@ function sleep(ms) {
 
 /** Fetches raw comments for a ticket. Returns [] on any failure (never throws). */
 async function fetchComments(ticketId) {
+  const { comments } = await fetchCommentsWithUsers(ticketId, { includeUsers: false });
+  return comments;
+}
+
+/**
+ * Fetches a ticket's full comment thread, in order - public replies and
+ * (by default) internal notes alike, everything Zendesk has for the
+ * ticket, not just the first message. Pass `includeUsers: true` (the
+ * default) to also side-load the commenting users so callers can turn
+ * `author_id` into a name without a second round trip; pass `false` to
+ * skip that when only the raw comments are needed (keeps the original
+ * getFirstPublicComment() call cheap).
+ *
+ * Returns { comments: [], users: [] } - empty arrays on any failure,
+ * never throws, same "fail quiet" contract as the rest of this module.
+ */
+async function fetchCommentsWithUsers(ticketId, opts) {
+  const includeUsers = !opts || opts.includeUsers !== false;
   const subdomain = (process.env.ZENDESK_SUBDOMAIN || '').trim();
-  if (!subdomain || !ticketId) return [];
-  const url = `https://${subdomain}.zendesk.com/api/v2/tickets/${encodeURIComponent(ticketId)}/comments.json`;
+  if (!subdomain || !ticketId) return { comments: [], users: [] };
+  const url = `https://${subdomain}.zendesk.com/api/v2/tickets/${encodeURIComponent(ticketId)}/comments.json`
+    + (includeUsers ? '?include=users' : '');
   try {
     const resp = await fetch(url, {
       headers: { authorization: authHeader(), 'content-type': 'application/json' }
     });
     if (!resp.ok) {
       console.error(`[zendesk] GET comments failed for ticket ${ticketId}: ${resp.status}`);
-      return [];
+      return { comments: [], users: [] };
     }
     const data = await resp.json();
-    return Array.isArray(data.comments) ? data.comments : [];
+    return {
+      comments: Array.isArray(data.comments) ? data.comments : [],
+      users: Array.isArray(data.users) ? data.users : []
+    };
   } catch (e) {
     console.error(`[zendesk] GET comments errored for ticket ${ticketId}:`, e.message);
-    return [];
+    return { comments: [], users: [] };
   }
+}
+
+/**
+ * Renders a ticket's comment thread as a plain-text transcript, oldest
+ * first - "<when> — <who> [internal note if private]: <body>", blank
+ * line between turns. Internal notes are included (marked as such)
+ * rather than dropped, since "what did the agent try/say internally"
+ * is often exactly what you want in the CRM record later.
+ */
+function formatTranscript(comments, users) {
+  const nameById = new Map((users || []).map((u) => [u.id, u.name || u.email || `User ${u.id}`]));
+  return (comments || [])
+    .map((c) => {
+      const who = nameById.get(c.author_id) || `User ${c.author_id || 'unknown'}`;
+      const when = c.created_at ? new Date(c.created_at).toLocaleString() : '';
+      const visibility = c.public === false ? ' [internal note]' : '';
+      const body = (c.plain_body || c.body || '').trim();
+      return `${when} — ${who}${visibility}:\n${body}`;
+    })
+    .join('\n\n');
 }
 
 /**
@@ -90,4 +132,4 @@ async function getFirstPublicComment(ticketId, opts) {
   return null;
 }
 
-module.exports = { isConfigured, fetchComments, getFirstPublicComment };
+module.exports = { isConfigured, fetchComments, fetchCommentsWithUsers, formatTranscript, getFirstPublicComment };

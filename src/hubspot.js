@@ -158,6 +158,14 @@ async function createTicket(fields) {
   if (queueProperty && fields.queue) {
     properties[queueProperty] = fields.queue;
   }
+  // And again for the originating Zendesk ticket id (HUBSPOT_ZENDESK_ID_PROPERTY).
+  // The id is already noted in the body text for a human to read, but that's
+  // not searchable - this is what lets findTicketIdByZendeskId() (used by the
+  // transcript sync endpoint) find the right ticket later without scraping text.
+  const zendeskIdProperty = (process.env.HUBSPOT_ZENDESK_ID_PROPERTY || '').trim();
+  if (zendeskIdProperty && fields.zendeskTicketId) {
+    properties[zendeskIdProperty] = String(fields.zendeskTicketId);
+  }
 
   let created;
   try {
@@ -167,10 +175,12 @@ async function createTicket(fields) {
     });
   } catch (e) {
     if ((categoryProperty && properties[categoryProperty] !== undefined)
-        || (queueProperty && properties[queueProperty] !== undefined)) {
+        || (queueProperty && properties[queueProperty] !== undefined)
+        || (zendeskIdProperty && properties[zendeskIdProperty] !== undefined)) {
       console.error(`[hubspot] ticket create failed with custom properties (${e.message}); retrying without them.`);
       delete properties[categoryProperty];
       delete properties[queueProperty];
+      delete properties[zendeskIdProperty];
       created = await hsFetch('/crm/v3/objects/tickets', {
         method: 'POST',
         body: JSON.stringify({ properties })
@@ -188,4 +198,52 @@ async function createTicket(fields) {
   return { id: created.id, url: ticketUrl(created.id), dryRun: false };
 }
 
-module.exports = { isConfigured, createTicket, upsertContact, associateTicketToContact, ticketUrl, PRIORITY_TO_HUBSPOT };
+/**
+ * Finds the HubSpot ticket that was created for a given Zendesk ticket, by
+ * searching on HUBSPOT_ZENDESK_ID_PROPERTY (set on the ticket by
+ * createTicket() above, when that env var is configured). Returns the
+ * HubSpot ticket id, or null if not configured, not found, or on error -
+ * never throws, so a sync attempt can report a clear "couldn't find it"
+ * instead of a 500.
+ */
+async function findTicketIdByZendeskId(zendeskTicketId) {
+  const property = (process.env.HUBSPOT_ZENDESK_ID_PROPERTY || '').trim();
+  if (!isConfigured() || !property || !zendeskTicketId) return null;
+  try {
+    const search = await hsFetch('/crm/v3/objects/tickets/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filterGroups: [{ filters: [{ propertyName: property, operator: 'EQ', value: String(zendeskTicketId) }] }],
+        limit: 1
+      })
+    });
+    return (search && search.results && search.results[0] && search.results[0].id) || null;
+  } catch (e) {
+    console.error('[hubspot] findTicketIdByZendeskId failed:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Logs a Note (a CRM engagement, not a ticket property) onto an existing
+ * ticket and associates it there. Used for the transcript sync: each sync
+ * adds a new note rather than overwriting the ticket's description, so the
+ * AI summary that was there at creation stays intact and a ticket that
+ * gets reopened/resolved more than once just accumulates one note per
+ * resolution instead of clobbering the previous transcript.
+ */
+async function addNoteToTicket(ticketId, body) {
+  if (!isConfigured()) return { id: 'dry-run-note', dryRun: true };
+  if (!ticketId || !body) throw new Error('addNoteToTicket requires both a ticketId and a body');
+  const created = await hsFetch('/crm/v3/objects/notes', {
+    method: 'POST',
+    body: JSON.stringify({ properties: { hs_timestamp: Date.now(), hs_note_body: body } })
+  });
+  await hsFetch(`/crm/v4/objects/notes/${created.id}/associations/default/tickets/${ticketId}`, { method: 'PUT' });
+  return { id: created.id, dryRun: false };
+}
+
+module.exports = {
+  isConfigured, createTicket, upsertContact, associateTicketToContact, ticketUrl, PRIORITY_TO_HUBSPOT,
+  findTicketIdByZendeskId, addNoteToTicket
+};
