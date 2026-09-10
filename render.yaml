@@ -15,6 +15,8 @@ services:
         value: "0"
       - key: HUBSPOT_PIPELINE_STAGE_ID
         value: "1"
+      - key: HUBSPOT_ZENDESK_ID_PROPERTY
+        sync: false
       - key: SLACK_TECHNICAL_WEBHOOK_URL
         sync: false
       - key: SLACK_GENERAL_WEBHOOK_URL

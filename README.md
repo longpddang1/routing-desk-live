@@ -38,6 +38,8 @@ Customer
 
 Both intake paths — the direct API and the Zendesk webhook — funnel through one shared `createAndRouteTicket()` function in `server.js`, so triage, HubSpot creation, and Slack routing behave identically no matter which channel a ticket came in on.
 
+Separately, once a ticket is marked **Solved** in Zendesk, a second trigger can hit `POST /api/zendesk-transcript-sync`, which pulls the full comment thread from the Zendesk API and logs it onto the matching HubSpot ticket as a Note — see 7c below. This is optional and independent of the flow above; without it, HubSpot only ever has the opening message.
+
 Nothing secret ever reaches the browser — the HubSpot token, Slack webhook URLs, Zendesk webhook secret, and (optional) Anthropic key all live only in server environment variables. The Zendesk **widget key** is the one exception: it's meant to be public (it's embedded in every page view), so it's not treated as a secret.
 
 If a credential isn't set yet, that piece quietly runs in "dry run" / "not configured" mode instead of failing — so you can stand the whole app up and click through it locally before any real accounts are wired in.
@@ -139,6 +141,29 @@ From then on, every new Zendesk ticket (chat included) hits `/api/zendesk-webhoo
 
 `/api/zendesk-webhook` refuses every request (401) until `ZENDESK_WEBHOOK_SECRET` is set and the incoming Basic-auth password matches, so it's safe to leave the webhook pointed at a not-yet-deployed or not-yet-configured URL.
 
+### 7c. Log the full conversation to HubSpot (optional, `/api/zendesk-transcript-sync`)
+
+Everything above logs a *snapshot* - the opening message, captured the instant the ticket is created. It never hears about anything said afterward, so the HubSpot ticket sits there showing only the first line forever, even after an agent picks it up and resolves it. This step closes that gap: once a ticket is marked **Solved** in Zendesk, this pulls the *entire* comment thread (public replies and internal notes alike) and logs it onto the matching HubSpot ticket as a Note - so the CRM ends up with a record of what actually happened, not just how it started.
+
+This needs three things, on top of what you already set up in 7a/7b:
+
+**A HubSpot ticket property to link on.** The Zendesk ticket ID is already noted in the ticket body text for a human to read, but that's not searchable. Go to HubSpot **Settings → Objects → Tickets → Properties → Create property**, make a single-line text property (call it whatever you like, e.g. "Zendesk Ticket ID"), and set `HUBSPOT_ZENDESK_ID_PROPERTY` in your environment to its **internal name** (shown when you create it, not the display label). From then on, every new ticket `createTicket()` makes will stamp this property automatically - it only works for tickets created *after* you set it, though; anything created earlier has nothing to search on.
+
+**Zendesk API credentials, if you haven't already set these** (`ZENDESK_SUBDOMAIN`, `ZENDESK_API_EMAIL`, `ZENDESK_API_TOKEN`) - Admin Center → Apps and integrations → APIs → Zendesk API → Add API token. `ZENDESK_SUBDOMAIN` is the part before `.zendesk.com` in your Zendesk URL.
+
+**A second webhook + trigger**, same pattern as 7b but pointed at the new endpoint:
+- **Webhook** (Admin Center → Apps and integrations → Webhooks → Create webhook): Endpoint URL `https://<your-deployed-url>/api/zendesk-transcript-sync`, method `POST`, format `JSON`, Basic auth with the *same* `ZENDESK_WEBHOOK_SECRET` you already have - no need to manage a second password.
+- **Trigger** (Objects and rules → Business rules → Triggers → Add trigger): Conditions → `Ticket > Status` **Changed to** `Solved`. Action → **Notify active webhook**, pick the new webhook, JSON body:
+  ```json
+  {
+    "ticket_id": "{{ticket.id}}"
+  }
+  ```
+
+Fires on **Solved** rather than on every new message, deliberately - one clean transcript per resolution beats a flood of webhook calls mid-conversation, and "what happened on this ticket" is almost always what you want to know *after* it's done. If a ticket gets reopened and solved again later, that just adds a second Note rather than overwriting the first, so the history stays intact.
+
+Check `transcriptSyncConfigured` at `/api/health` to confirm both halves (the Zendesk API creds and the HubSpot property) are set before wiring up the trigger.
+
 ## 8. Push this project to GitHub
 
 ```bash
@@ -173,6 +198,6 @@ Also worth a dry run: open the homepage, use the chat widget yourself to send a 
 
 ## What's built vs. what's next
 
-**Built now:** a real B2B homepage with a Zendesk live-chat widget and a support email address → every chat ticket is forwarded here automatically → priority + category triage → HubSpot ticket creation with a linked contact and a link back to the original Zendesk ticket → Slack notification in the right queue, linking to both HubSpot and Zendesk. You resolve tickets in HubSpot itself. Phone/voice intake was intentionally left out of this phase.
+**Built now:** a real B2B homepage with a Zendesk live-chat widget and a support email address → every chat ticket is forwarded here automatically → priority + category triage → HubSpot ticket creation with a linked contact and a link back to the original Zendesk ticket → Slack notification in the right queue, linking to both HubSpot and Zendesk. You resolve tickets in HubSpot itself. Optionally, once a ticket's marked Solved in Zendesk, its full conversation (not just the opening message) gets logged onto the HubSpot ticket as a Note — see 7c. Phone/voice intake was intentionally left out of this phase.
 
 **Phase 2 (the "nice to have" from our conversation):** resolving a ticket directly from a button inside Slack, which then writes the resolution back to HubSpot automatically. That needs a real Slack bot (not just an incoming webhook) with an Interactivity endpoint Slack can call — happy to build that once the base flow above is live and working for you.

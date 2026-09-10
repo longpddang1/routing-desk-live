@@ -183,6 +183,10 @@ app.get('/api/health', (req, res) => {
     zendeskWebhookConfigured: !!(process.env.ZENDESK_WEBHOOK_SECRET || '').trim(),
     zendeskApiConfigured: zendesk.isConfigured(),
     zendeskIssueFieldConfigured: !!(process.env.ZENDESK_ISSUE_FIELD_ID || '').trim(),
+    // Both halves are required for the transcript-sync endpoint below to
+    // find and update anything: the Zendesk API to fetch the thread, and
+    // the HubSpot property to look the ticket back up by.
+    transcriptSyncConfigured: zendesk.isConfigured() && !!(process.env.HUBSPOT_ZENDESK_ID_PROPERTY || '').trim(),
     supportEmail: (process.env.SUPPORT_EMAIL || 'support@example.com').trim()
   });
 });
@@ -339,6 +343,62 @@ app.post('/api/zendesk-webhook', async (req, res) => {
   }
 });
 
+/* ---------------------------------------------------------------
+   Transcript sync. The webhook above logs a ticket the instant it's
+   created - a snapshot of the opening message. It never hears about
+   anything said afterward, so a HubSpot ticket sits there showing only
+   the first line forever while the real back-and-forth (bot Q&A, an
+   agent picking it up, the resolution) stays in Zendesk.
+
+   This is the second half: point a Zendesk trigger at this endpoint on
+   "ticket status changed to Solved" and it pulls the ticket's full
+   comment thread (public replies and internal notes alike) and logs it
+   onto the matching HubSpot ticket as a Note - so the CRM ends up with
+   a record of what actually happened, not just how it started.
+
+   Deliberately fires on Solved rather than on every new comment: one
+   clean transcript per resolution beats a flood of one-line webhook
+   calls for every message, and "what happened on this ticket" is
+   almost always wanted after the fact, not mid-conversation. See
+   README.md for the trigger + second webhook setup.
+
+   Same Basic-auth secret as /api/zendesk-webhook - no need for Zendesk
+   to manage two different passwords for two triggers on the same app.
+----------------------------------------------------------------*/
+app.post('/api/zendesk-transcript-sync', async (req, res) => {
+  if (!verifyZendeskAuth(req)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const zendeskTicketId = req.body && req.body.ticket_id ? String(req.body.ticket_id).slice(0, 60) : null;
+    if (!zendeskTicketId) return res.status(400).json({ error: 'Missing ticket_id in payload.' });
+
+    if (!zendesk.isConfigured()) {
+      return res.status(400).json({ error: 'Zendesk API credentials (ZENDESK_SUBDOMAIN/API_EMAIL/API_TOKEN) are not configured on the server.' });
+    }
+
+    const { comments, users } = await zendesk.fetchCommentsWithUsers(zendeskTicketId);
+    if (!comments.length) {
+      return res.status(404).json({ error: `No comments found for Zendesk ticket #${zendeskTicketId} (or the API call failed - check server logs).` });
+    }
+
+    const hsTicketId = await hubspot.findTicketIdByZendeskId(zendeskTicketId);
+    if (!hsTicketId) {
+      return res.status(404).json({
+        error: `No HubSpot ticket is linked to Zendesk ticket #${zendeskTicketId}. This needs HUBSPOT_ZENDESK_ID_PROPERTY set on the server AND the ticket to have been created after that was set - older tickets won't have the property filled in.`
+      });
+    }
+
+    const transcript = zendesk.formatTranscript(comments, users);
+    const note = await hubspot.addNoteToTicket(hsTicketId, `Full Zendesk conversation (ticket #${zendeskTicketId}, ${comments.length} messages):\n\n${transcript}`);
+
+    res.json({ ok: true, hubspotTicketId: hsTicketId, noteId: note.id, dryRun: note.dryRun, commentCount: comments.length });
+  } catch (e) {
+    console.error('[POST /api/zendesk-transcript-sync] failed:', e);
+    res.status(500).json({ error: 'Failed to sync the Zendesk transcript to HubSpot.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Routing Desk Live listening on port ${PORT}`);
   console.log(`  HubSpot configured: ${hubspot.isConfigured()}`);
@@ -348,4 +408,5 @@ app.listen(PORT, () => {
   console.log(`  Zendesk widget: ${!!(process.env.ZENDESK_WIDGET_KEY || '').trim()}`);
   console.log(`  Zendesk webhook secret set: ${!!(process.env.ZENDESK_WEBHOOK_SECRET || '').trim()}`);
   console.log(`  Zendesk API (real comment fetch) configured: ${zendesk.isConfigured()}`);
+  console.log(`  Transcript sync to HubSpot configured: ${zendesk.isConfigured() && !!(process.env.HUBSPOT_ZENDESK_ID_PROPERTY || '').trim()}`);
 });
